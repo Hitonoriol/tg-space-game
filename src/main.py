@@ -28,7 +28,10 @@ def handle_command(command):
         player.start_timed_action(plr.Action.PLANET_SEARCH)
 
     if command == "check_progress":
-        player.check_progress()
+        player.check_progress(True)
+
+    if command == "show_cargo":
+        player.show_cargo()
 
     storage_utils.save_player(player)
 

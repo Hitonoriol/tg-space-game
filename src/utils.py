@@ -25,3 +25,7 @@ def out(msg):
 
 def time_str(sec):
     return str(datetime.timedelta(seconds=sec))
+
+
+def round_str(num):
+    return str(round(num, 2))
