@@ -16,6 +16,7 @@ class PendingAction:
         self.action = action
         self.start_time = utils.now()
         self.length = length
+        self.ready = False
 
 
 action_lengths = {Action.PLANET_SEARCH: 3}
@@ -57,8 +58,51 @@ class Cargo:
         return not self.contents
 
 
+class Shuttle:
+    def __init__(self):
+        self.name = utils.rand_str(3)
+        self.lvl = 1
+        self.hp = 50
+        self.in_use = False
+        self.departure_time = -1
+
+    def depart(self, time: int):
+        self.in_use = True
+        self.departure_time = time
+
+    def return_to_hangar(self):
+        self.in_use = False
+        self.departure_time = -1
+
+
+class ShuttleHangar:
+    def __init__(self):
+        self.shuttles = []
+
+    def get_idle_shuttles(self):
+        idle_shuttles = []
+        for shuttle in self.shuttles:
+            if not shuttle.in_use:
+                idle_shuttles.append(shuttle)
+        return idle_shuttles
+
+    def next_idle_shuttle(self) -> Shuttle:
+        idle_shuttles = self.get_idle_shuttles()
+        if not idle_shuttles:
+            return
+        else:
+            return idle_shuttles[0]
+
+    def find_by_departure(self, departure_time: int) -> Shuttle:
+        for shuttle in self.shuttles:
+            if shuttle.departure_time == departure_time:
+                return shuttle
+
+        return None
+
+
 class Player:
-    PROGRESS_NTF_MIN_TIME = 600
+    PROGRESS_NTF_MIN_TIME = 900
 
     face_icon = "👦"
     money_icon = "💵"
@@ -70,7 +114,10 @@ class Player:
     time_icon = "🕛"
     progress_icon = "⌛"
     shuttle_icon = "🚀"
+    shop_icon = "🛍️"
     bulletpoint_icon = "⚫"
+
+    shuttle_price = 100
 
     extraction_rate = 0.075
     exp_multiplier = 1.195
@@ -94,7 +141,18 @@ class Player:
 
         self.cargo = Cargo()
         self.planets = []
-        self.shuttles = []
+        self.shuttle_hangar = ShuttleHangar()
+
+    def buy_shuttle(self):
+        if self.money < self.shuttle_price:
+            self.notify("You don't have enough money to buy a new shuttle!")
+            return
+
+        self.money -= self.shuttle_price
+        shuttle = Shuttle()
+        self.shuttle_hangar.shuttles.append(shuttle)
+        self.notify("Bought a new shuttle: " + self.shuttle_icon + " " + shuttle.name + "\n\n" +
+                    self.money_icon + " Credits left: " + str(self.money))
 
     def level_up(self):
         self.exp = 0
@@ -102,7 +160,7 @@ class Player:
         self.lvl += 1
 
         msg = self.levelup_icon + " Level Up! You are now a level " + str(self.lvl) + " captain."
-        globals.bot.send_message(self.id, msg)
+        self.notify(msg)
 
     def add_exp(self, amt: int):
         if amt < 1:
@@ -111,7 +169,7 @@ class Player:
         self.exp += amt
 
         msg = self.exp_icon + " You get +" + str(amt) + " experience!"
-        globals.bot.send_message(self.id, msg)
+        self.notify(msg)
 
         if self.exp >= self.required_exp:
             self.level_up()
@@ -122,23 +180,37 @@ class Player:
     def start_timed_action(self, action: Action):
         global action_lengths
         globals.pending_players.append(str(self.id))
-        self.pending_actions.append(PendingAction(self.id, action, action_lengths[action]))
-        self.start_action(action)
+        pending_action = PendingAction(self.id, action, action_lengths[action])
+        self.pending_actions.append(pending_action)
+        if self.start_action(action):
+            pending_action.ready = True
+        else:
+            self.pending_actions.remove(pending_action)
+
+    def start_planet_search(self):
+        shuttle = self.shuttle_hangar.next_idle_shuttle()
+        if shuttle is None:
+            self.notify("You don't have any shuttles left in your hangar!")
+            return
+
+        shuttle.depart(self.pending_actions[-1].start_time)
+
+        self.notify("You send your " + self.shuttle_icon + " " + shuttle.name + " shuttle to search for a new planet...\n\n" +
+                    self.time_icon + " It will return in " + utils.time_str(action_lengths[Action.PLANET_SEARCH]) + ".")
+        return True
 
     def start_action(self, action: Action):
         global action_lengths
         if action == Action.PLANET_SEARCH:
-            msg = (self.shuttle_icon + " You send one of your shuttles to search for a new planet...\n\n" +
-                   "" + self.time_icon + " It will return in " + utils.time_str(action_lengths[Action.PLANET_SEARCH]) + ".")
-            globals.bot.send_message(self.id, msg)
+            return self.start_planet_search()
 
-    def complete_action(self, action: Action):
-        if action == Action.PLANET_SEARCH:
-            self.find_planet()
+    def complete_action(self, pending_action: PendingAction):
+        if pending_action.action == Action.PLANET_SEARCH:
+            self.find_planet(pending_action)
 
     def check_pending_action(self, action: PendingAction):
-        if utils.now() - action.start_time >= action.length:
-            self.complete_action(action.action)
+        if utils.now() - action.start_time >= action.length and action.ready:
+            self.complete_action(action)
             return True
         else:
             return False
@@ -186,10 +258,10 @@ class Player:
                     " (" + str(round(resources_remain[resource], 2)) + " kg left)" + "\n")
 
         if time_passed >= self.PROGRESS_NTF_MIN_TIME or verbose:
-            globals.bot.send_message(self.id, msg)
+            self.notify(msg)
 
         if len(depleted_msg) > 0:
-            globals.bot.send_message(self.id, depleted_msg)
+            self.notify(depleted_msg)
 
     def add_money(self, quantity: float):
         if quantity <= 0:
@@ -197,24 +269,25 @@ class Player:
 
         self.money += quantity
         msg = self.money_icon + " You receive +" + utils.round_str(quantity) + " credits."
-        globals.bot.send_message(self.id, msg)
+        self.notify(msg)
 
     def sell_resource(self, resource: Resource, quantity: int):
         if quantity < 1:
             return False
 
         if not self.cargo.contains(resource, quantity):
-            globals.bot.send_message(self.id, "You don't have this quantity of " + resource.name + " in your cargo bay!")
+            self.notify("You don't have this quantity of " + resource.name + " in your cargo bay!")
             return False
 
         self.cargo.remove(resource, quantity)
         self.add_money(resource_prices.get(resource, 0))
-        globals.bot.send_message(self.id, "Successfuly sold " + str(quantity) + " kg of " + resource.name + ".")
+        self.notify("Successfuly sold " + str(quantity) + " kg of " + resource.name + ".")
 
         return True
 
-    def find_planet(self):
+    def find_planet(self, action: PendingAction):
         planet = Planet(random.choice(resource_list))
+        self.shuttle_hangar.find_by_departure(action.start_time).return_to_hangar()
 
         base_resources = self.lvl * resources_per_lvl
         planet.set_resource_amount(random.uniform(base_resources * 0.15, base_resources))
@@ -225,7 +298,7 @@ class Player:
                self.resource_icon + " Resource type: " + planet.resource.name + "\n" +
                self.box_icon + " Resource amount: " + str(round(planet.resource_amount, 2)) + " kg\n")
 
-        globals.bot.send_message(self.id, msg)
+        self.notify(msg)
         self.add_exp(int(planet.resource_amount * 0.2))
 
     def show_profile(self):
@@ -235,7 +308,7 @@ class Player:
                self.money_icon + " Credits: " + str(self.money) + "\n" +
                self.planet_icon + " Planets found: " + str(len(self.planets))
                )
-        globals.bot.send_message(self.id, msg)
+        self.notify(msg)
 
     def show_cargo(self):
         self.check_progress()
@@ -250,4 +323,11 @@ class Player:
         if self.cargo.is_empty():
             msg += "Your cargo bay is completely empty!"
 
+        self.notify(msg)
+
+    def view_shop(self):
+        self.notify(self.shop_icon + " Shop\n\n" +
+                    self.shuttle_icon + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + self.money_icon + " credits    /buy_shuttle \n")
+
+    def notify(self, msg):
         globals.bot.send_message(self.id, msg)

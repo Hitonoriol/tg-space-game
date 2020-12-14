@@ -41,6 +41,12 @@ def handle_command(command):
     elif command == "show_cargo":
         player.show_cargo()
 
+    elif command == "shop":
+        player.view_shop()
+
+    elif command == "buy_shuttle":
+        player.buy_shuttle()
+
     else:
         tokens = command.split("_")
         handle_arg_command(tokens[0], tokens[1:])
