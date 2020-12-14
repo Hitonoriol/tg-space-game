@@ -2,6 +2,7 @@ import player as plr
 import storage_utils
 import globals as game
 import utils
+from resource import Resource
 
 admin_ids = [46010798]
 
@@ -15,6 +16,13 @@ def handle_admin_command(command):
         stop()
 
 
+def handle_arg_command(command, args):
+    global player
+
+    if command == "sell":
+        player.sell_resource(Resource[args[0]], int(args[1]))
+
+
 def handle_command(command):
     global player
 
@@ -24,14 +32,18 @@ def handle_command(command):
     if command == "profile":
         player.show_profile()
 
-    if command == "find_planet":
+    elif command == "find_planet":
         player.start_timed_action(plr.Action.PLANET_SEARCH)
 
-    if command == "check_progress":
+    elif command == "check_progress":
         player.check_progress(True)
 
-    if command == "show_cargo":
+    elif command == "show_cargo":
         player.show_cargo()
+
+    else:
+        tokens = command.split("_")
+        handle_arg_command(tokens[0], tokens[1:])
 
     storage_utils.save_player(player)
 

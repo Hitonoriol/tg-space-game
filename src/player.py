@@ -1,4 +1,5 @@
 import random
+import enum
 
 import globals
 from planet import *
@@ -6,7 +7,7 @@ from resource import *
 
 
 class Action(Enum):
-    PLANET_SEARCH = auto()
+    PLANET_SEARCH = enum.auto()
 
 
 class PendingAction:
@@ -17,7 +18,7 @@ class PendingAction:
         self.length = length
 
 
-action_lengths = {Action.PLANET_SEARCH: 60}
+action_lengths = {Action.PLANET_SEARCH: 3}
 
 
 class Cargo:
@@ -44,7 +45,7 @@ class Cargo:
             return False
 
         self.cur_weight -= quantity
-        self.put(resource, self.get(resource) - quantity)
+        self.contents[resource] = self.get(resource) - quantity
 
     def contains(self, resource: Resource, quantity: float):
         if self.get(resource) >= quantity:
@@ -57,7 +58,7 @@ class Cargo:
 
 
 class Player:
-    PROGRESS_NTF_MIN_TIME = 300
+    PROGRESS_NTF_MIN_TIME = 600
 
     face_icon = "👦"
     money_icon = "💵"
@@ -82,7 +83,7 @@ class Player:
 
         self.last_check = utils.now()
 
-        self.money = 1000
+        self.money = 100
         self.lvl = 1
         self.exp = 0
         self.required_exp = 50
@@ -190,6 +191,28 @@ class Player:
         if len(depleted_msg) > 0:
             globals.bot.send_message(self.id, depleted_msg)
 
+    def add_money(self, quantity: float):
+        if quantity <= 0:
+            return
+
+        self.money += quantity
+        msg = self.money_icon + " You receive +" + utils.round_str(quantity) + " credits."
+        globals.bot.send_message(self.id, msg)
+
+    def sell_resource(self, resource: Resource, quantity: int):
+        if quantity < 1:
+            return False
+
+        if not self.cargo.contains(resource, quantity):
+            globals.bot.send_message(self.id, "You don't have this quantity of " + resource.name + " in your cargo bay!")
+            return False
+
+        self.cargo.remove(resource, quantity)
+        self.add_money(resource_prices.get(resource, 0))
+        globals.bot.send_message(self.id, "Successfuly sold " + str(quantity) + " kg of " + resource.name + ".")
+
+        return True
+
     def find_planet(self):
         planet = Planet(random.choice(resource_list))
 
@@ -215,11 +238,14 @@ class Player:
         globals.bot.send_message(self.id, msg)
 
     def show_cargo(self):
-        msg = (self.box_icon + " Cargo bay\n" +
+        self.check_progress()
+        msg = (self.box_icon + " Cargo bay " +
                "[" + utils.round_str(self.cargo.cur_weight) + "/" + utils.round_str(self.cargo.max_weight) + " kg]\n\n")
 
-        for resource, quantity in self.cargo.contents:
-            msg += self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg\n"
+        for resource, quantity in self.cargo.contents.items():
+            msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg    " +
+                    "/sell_" + resource.name + "_1" + "\n"
+                    )
 
         if self.cargo.is_empty():
             msg += "Your cargo bay is completely empty!"
