@@ -1,3 +1,4 @@
+import math
 import player as plr
 import storage_utils
 import globals as game
@@ -20,7 +21,13 @@ def handle_arg_command(command, args):
     global player
 
     if command == "sell":
-        player.sell_resource(Resource[args[0]], int(args[1]))
+        resource = Resource[args[0]]
+        if args[1] == "all":
+            player.sell_resource(resource, math.floor(player.cargo.get(resource)))
+        else:
+            if not args[1].isnumeric():
+                return
+            player.sell_resource(resource, int(args[1]))
 
 
 def handle_command(command):
@@ -43,6 +50,9 @@ def handle_command(command):
 
     elif command == "shop":
         player.view_shop()
+
+    elif command == "celestial_database":  # TODO
+        pass
 
     elif command == "buy_shuttle":
         player.buy_shuttle()

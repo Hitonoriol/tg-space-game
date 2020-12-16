@@ -1,4 +1,6 @@
+from typing import NamedTuple
 from enum import Enum
+import utils
 
 
 class ResourceType(Enum):
@@ -8,32 +10,33 @@ class ResourceType(Enum):
     Fuel = 3
 
 
-class Resource(Enum):
-    Iron = (0, ResourceType.Metal)
-    Copper = (1, ResourceType.Metal)
-    Organics = (2, ResourceType.Solid)
-    Peat = (3, ResourceType.Fuel)
-    Stone = (4, ResourceType.Solid)
-    Sand = (5, ResourceType.Solid)
-    Water = (6, ResourceType.Liquid)
-    Oil = (7, ResourceType.Fuel)
-    Uranium = (8, ResourceType.Fuel)
+class ResourceContainer(NamedTuple):
+    type: ResourceType
+    price: float
+    probability: float = 25
 
-    def __init__(self, id, type: ResourceType = ResourceType.Solid):
-        self.id = id
-        self.type = type
+
+class Resource(Enum):
+    Iron = ResourceContainer(type=ResourceType.Solid, price=1.25, probability=27)
+    Copper = ResourceContainer(type=ResourceType.Metal, price=1, probability=30)
+    Organics = ResourceContainer(type=ResourceType.Solid, price=2.5, probability=7)
+    Peat = ResourceContainer(type=ResourceType.Fuel, price=3.25, probability=20)
+    Stone = ResourceContainer(type=ResourceType.Solid, price=0.5, probability=50)
+    Sand = ResourceContainer(type=ResourceType.Solid, price=0.75, probability=45)
+    Water = ResourceContainer(type=ResourceType.Liquid, price=2.5, probability=7.5)
+    Oil = ResourceContainer(type=ResourceType.Fuel, price=3.5, probability=10)
+    Uranium = ResourceContainer(type=ResourceType.Fuel, price=4.25, probability=5)
+    Dust = ResourceContainer(type=ResourceType.Solid, price=0.25)
 
 
 resource_list = list(Resource)
+resource_list.sort(key=lambda res: res.value.probability)
 
-resource_prices = {
-    Resource.Iron: 0.25,
-    Resource.Copper: 0.2,
-    Resource.Organics: 0.5,
-    Resource.Peat: 0.65,
-    Resource.Stone: 0.1,
-    Resource.Sand: 0.15,
-    Resource.Water: 0.5,
-    Resource.Oil: 0.7,
-    Resource.Uranium: 0.85
-}
+
+def roll_resource() -> Resource:
+    roll = utils.rand_percent()
+    for resource in resource_list:
+        if utils.roll_result(roll, resource.value.probability):
+            return resource
+
+    return Resource.Dust

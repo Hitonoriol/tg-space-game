@@ -1,6 +1,7 @@
 import random
 import enum
 
+import strings
 import globals
 from planet import *
 from resource import *
@@ -28,33 +29,34 @@ class Cargo:
         self.max_weight = 25
         self.contents = {}
 
-    def get(self, resource: Resource):
+    def get(self, resource: Resource) -> float:
         return self.contents.get(resource, 0)
 
-    def put(self, resource: Resource, quantity: float):
-        res = 0
+    def put(self, resource: Resource, quantity: float) -> float:
+        overflow: float = 0
         self.cur_weight += quantity
         if self.cur_weight > self.max_weight:
-            res = self.max_weight - self.cur_weight
+            overflow = self.max_weight - self.cur_weight
             self.cur_weight = self.max_weight
 
-        self.contents[resource] = self.get(resource) + (quantity - res)
-        return res
+        self.contents[resource] = self.get(resource) + (quantity - overflow)
+        return overflow
 
-    def remove(self, resource: Resource, quantity: float):
+    def remove(self, resource: Resource, quantity: float) -> bool:
         if not self.contains(resource, quantity):
             return False
 
         self.cur_weight -= quantity
         self.contents[resource] = self.get(resource) - quantity
+        return True
 
-    def contains(self, resource: Resource, quantity: float):
+    def contains(self, resource: Resource, quantity: float) -> bool:
         if self.get(resource) >= quantity:
             return True
 
         return False
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return not self.contents
 
 
@@ -117,7 +119,7 @@ class Player:
     shop_icon = "🛍️"
     bulletpoint_icon = "⚫"
 
-    shuttle_price = 100
+    shuttle_price = 50
 
     extraction_rate = 0.075
     exp_multiplier = 1.195
@@ -130,7 +132,7 @@ class Player:
 
         self.last_check = utils.now()
 
-        self.money = 100
+        self.money = self.shuttle_price
         self.lvl = 1
         self.exp = 0
         self.required_exp = 50
@@ -232,7 +234,7 @@ class Player:
         resources_extracted = {}
         resources_remain = {}
         for planet in self.planets[:]:
-            extracted = self.extraction_rate * minutes_passed
+            extracted = self.extraction_rate * (planet.time_passed(now) / 60)
 
             if planet.resource_amount - extracted <= 0:
                 extracted = planet.resource_amount
@@ -241,7 +243,9 @@ class Player:
             else:
                 planet.resource_amount -= extracted
 
-            self.cargo.put(planet.resource, extracted)
+            overflow = self.cargo.put(planet.resource, extracted)
+            planet.resource_amount += overflow
+            extracted -= overflow
             resources_extracted[planet.resource] = resources_extracted.get(planet.resource, 0) + extracted
             resources_remain[planet.resource] = resources_remain.get(planet.resource, 0) + planet.resource_amount
 
@@ -280,13 +284,13 @@ class Player:
             return False
 
         self.cargo.remove(resource, quantity)
-        self.add_money(resource_prices.get(resource, 0))
+        self.add_money(resource.value.price * quantity)
         self.notify("Successfuly sold " + str(quantity) + " kg of " + resource.name + ".")
 
         return True
 
     def find_planet(self, action: PendingAction):
-        planet = Planet(random.choice(resource_list))
+        planet = Planet(roll_resource())
         self.shuttle_hangar.find_by_departure(action.start_time).return_to_hangar()
 
         base_resources = self.lvl * resources_per_lvl
@@ -305,7 +309,7 @@ class Player:
         msg = (" Captain " + self.face_icon + " " + self.name + "\n\n" +
                self.exp_icon + " Level " + str(self.lvl) + " [" + str(self.exp) + "/" + str(self.required_exp) + "] " +
                "(" + str(round((self.exp / self.required_exp) * 100)) + "%)\n" +
-               self.money_icon + " Credits: " + str(self.money) + "\n" +
+               self.money_icon + " Credits: " + utils.round_str(self.money) + "\n" +
                self.planet_icon + " Planets found: " + str(len(self.planets))
                )
         self.notify(msg)
@@ -316,17 +320,21 @@ class Player:
                "[" + utils.round_str(self.cargo.cur_weight) + "/" + utils.round_str(self.cargo.max_weight) + " kg]\n\n")
 
         for resource, quantity in self.cargo.contents.items():
-            msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg    " +
-                    "/sell_" + resource.name + "_1" + "\n"
+            msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
+                    ("/sell_" + resource.name + "_1 ", "/sell_" + resource.name + "_all")[quantity > 1] + " "
+                                                                                                          "(" + self.money_icon + " " + str(resource.value.price) + " per kg)" + "\n"
                     )
 
         if self.cargo.is_empty():
             msg += "Your cargo bay is completely empty!"
+        else:
+            msg += "\n" + "/upgrade_cargo"
 
         self.notify(msg)
 
     def view_shop(self):
-        self.notify(self.shop_icon + " Shop\n\n" +
+        self.notify(self.shop_icon + " Shop\n" +
+                    "Your credits: " + self.money_icon + " " + utils.round_str(self.money) + "\n\n" +
                     self.shuttle_icon + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + self.money_icon + " credits    /buy_shuttle \n")
 
     def notify(self, msg):
