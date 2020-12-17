@@ -51,8 +51,8 @@ def handle_command(command):
     elif command == "shop":
         player.view_shop()
 
-    elif command == "celestial_database":  # TODO
-        pass
+    elif command == "celestial_database":
+        player.view_planet_list()
 
     elif command == "buy_shuttle":
         player.buy_shuttle()

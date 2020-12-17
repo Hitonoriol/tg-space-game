@@ -1,1 +1,2 @@
 tab = "    "
+newline = "\n"

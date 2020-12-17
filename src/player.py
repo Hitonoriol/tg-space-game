@@ -36,7 +36,7 @@ class Cargo:
         overflow: float = 0
         self.cur_weight += quantity
         if self.cur_weight > self.max_weight:
-            overflow = self.max_weight - self.cur_weight
+            overflow = self.cur_weight - self.max_weight
             self.cur_weight = self.max_weight
 
         self.contents[resource] = self.get(resource) + (quantity - overflow)
@@ -48,6 +48,10 @@ class Cargo:
 
         self.cur_weight -= quantity
         self.contents[resource] = self.get(resource) - quantity
+
+        if self.cur_weight < 0:
+            self.cur_weight = 0
+
         return True
 
     def contains(self, resource: Resource, quantity: float) -> bool:
@@ -58,6 +62,9 @@ class Cargo:
 
     def is_empty(self) -> bool:
         return not self.contents
+
+    def is_full(self) -> bool:
+        return self.cur_weight == self.max_weight
 
 
 class Shuttle:
@@ -103,6 +110,42 @@ class ShuttleHangar:
         return None
 
 
+class PlanetContainer:
+    def __init__(self):
+        self.max_planets = 5
+        self.planet_count = 0
+        self.planets = []
+
+    def add_planet(self, planet: Planet):
+        if self.planet_count + 1 > self.max_planets:
+            return
+        self.planet_count += 1
+        self.planets.append(planet)
+
+    def remove_planet(self, planet: Planet):
+        self.planet_count -= 1
+        self.planets.remove(planet)
+
+    def get_resource_reserves(self):
+        resources = {}
+        for planet in self.planets:
+            resources[planet.resource] = resources.get(planet.resource, 0) + planet.resource_amount
+        return resources
+
+    def get_extraction_rate(self, resource: Resource):
+        rate = 0
+        for planet in self.planets:
+            if planet.resource == resource:
+                rate += 1
+        return rate
+
+    def get_pcount_str(self):
+        return str(self.planet_count) + "/" + str(self.max_planets)
+
+    def is_full(self):
+        return self.planet_count == self.max_planets
+
+
 class Player:
     PROGRESS_NTF_MIN_TIME = 900
 
@@ -110,6 +153,7 @@ class Player:
     money_icon = "💵"
     exp_icon = "✨"
     planet_icon = "🪐"
+    planet_list_icon = "🌐"
     box_icon = "📦"
     resource_icon = "💎"
     levelup_icon = "🎉"
@@ -118,6 +162,7 @@ class Player:
     shuttle_icon = "🚀"
     shop_icon = "🛍️"
     bulletpoint_icon = "⚫"
+    resource_extraction_icon = "⛏"
 
     shuttle_price = 50
 
@@ -142,7 +187,7 @@ class Player:
         self.pending_actions = []
 
         self.cargo = Cargo()
-        self.planets = []
+        self.planet_container = PlanetContainer()
         self.shuttle_hangar = ShuttleHangar()
 
     def buy_shuttle(self):
@@ -195,6 +240,10 @@ class Player:
             self.notify("You don't have any shuttles left in your hangar!")
             return
 
+        if self.planet_container.is_full():
+            self.notify("Your celestial database is full!")
+            return
+
         shuttle.depart(self.pending_actions[-1].start_time)
 
         self.notify("You send your " + self.shuttle_icon + " " + shuttle.name + " shuttle to search for a new planet...\n\n" +
@@ -233,27 +282,35 @@ class Player:
 
         resources_extracted = {}
         resources_remain = {}
-        for planet in self.planets[:]:
+        for planet in self.planet_container.planets[:]:
+            if self.cargo.is_full():
+                break
             extracted = self.extraction_rate * (planet.time_passed(now) / 60)
 
             if planet.resource_amount - extracted <= 0:
                 extracted = planet.resource_amount
                 planet.resource_amount = 0
-                self.planets.remove(planet)
             else:
                 planet.resource_amount -= extracted
 
             overflow = self.cargo.put(planet.resource, extracted)
             planet.resource_amount += overflow
             extracted -= overflow
+
+            if extracted <= 0:
+                extracted = 0
+
             resources_extracted[planet.resource] = resources_extracted.get(planet.resource, 0) + extracted
             resources_remain[planet.resource] = resources_remain.get(planet.resource, 0) + planet.resource_amount
 
             if planet.resource_amount == 0:
+                self.planet_container.remove_planet(planet)
                 depleted_msg += self.planet_icon + " " + planet.name + " is out of " + planet.resource.name + "!\n"
 
         if resources_extracted:
             msg += "Your drills have extracted:\n"
+        elif self.cargo.is_full():
+            msg += "Your cargo bay is full!"
         else:
             msg += "You don't have any planets in your celestial body database."
 
@@ -295,7 +352,7 @@ class Player:
 
         base_resources = self.lvl * resources_per_lvl
         planet.set_resource_amount(random.uniform(base_resources * 0.15, base_resources))
-        self.planets.append(planet)
+        self.planet_container.add_planet(planet)
 
         msg = ("You found a new planet!\n\n" +
                self.planet_icon + " Name: " + planet.name + "\n" +
@@ -306,11 +363,13 @@ class Player:
         self.add_exp(int(planet.resource_amount * 0.2))
 
     def show_profile(self):
+        self.check_progress()
         msg = (" Captain " + self.face_icon + " " + self.name + "\n\n" +
                self.exp_icon + " Level " + str(self.lvl) + " [" + str(self.exp) + "/" + str(self.required_exp) + "] " +
                "(" + str(round((self.exp / self.required_exp) * 100)) + "%)\n" +
                self.money_icon + " Credits: " + utils.round_str(self.money) + "\n" +
-               self.planet_icon + " Planets found: " + str(len(self.planets))
+               self.planet_icon + " Planets found: " + str(self.planet_container.planet_count) + strings.tab + "/celestial_database\n" +
+               self.shuttle_icon + " Shuttles: " + str(len(self.shuttle_hangar.shuttles))
                )
         self.notify(msg)
 
@@ -322,7 +381,7 @@ class Player:
         for resource, quantity in self.cargo.contents.items():
             msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
                     ("/sell_" + resource.name + "_1 ", "/sell_" + resource.name + "_all")[quantity > 1] + " "
-                                                                                                          "(" + self.money_icon + " " + str(resource.value.price) + " per kg)" + "\n"
+                                                                                                          "(" + self.money_icon + str(resource.value.price) + " per kg)" + "\n"
                     )
 
         if self.cargo.is_empty():
@@ -336,6 +395,27 @@ class Player:
         self.notify(self.shop_icon + " Shop\n" +
                     "Your credits: " + self.money_icon + " " + utils.round_str(self.money) + "\n\n" +
                     self.shuttle_icon + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + self.money_icon + " credits    /buy_shuttle \n")
+
+    def view_planet_list(self):
+        self.check_progress()
+        msg = (self.planet_list_icon + " Celestial Body Database " +
+               "[" + self.planet_container.get_pcount_str() + "]\n\n"
+               )
+
+        if self.planet_container.planet_count == 0:
+            msg += "Your database is empty!\n"
+        else:
+            msg += "Planets by resource:\n"
+
+        resources = self.planet_container.get_resource_reserves()
+        for resource, quantity in resources.items():
+            msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
+                    self.resource_extraction_icon +
+                    utils.round_str(self.planet_container.get_extraction_rate(resource) * self.extraction_rate) + " kg/min\n"
+                    )
+        msg += "\n" + "/upgrade_celestial_database"
+
+        self.notify(msg)
 
     def notify(self, msg):
         globals.bot.send_message(self.id, msg)
