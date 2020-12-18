@@ -30,6 +30,16 @@ def handle_arg_command(command, args):
             player.sell_resource(resource, int(args[1]))
 
 
+def handle_upgrade_command(command):
+    global player
+
+    if command == "celestial_database":
+        player.upgrade(player.planet_container)
+
+    if command == "cargo":
+        player.upgrade(player.cargo)
+
+
 def handle_command(command):
     global player
 
@@ -56,6 +66,9 @@ def handle_command(command):
 
     elif command == "buy_shuttle":
         player.buy_shuttle()
+
+    elif "upgrade" in command:
+        handle_upgrade_command(command.split("_", 1)[1])
 
     else:
         tokens = command.split("_")

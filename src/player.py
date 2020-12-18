@@ -24,10 +24,14 @@ action_lengths = {Action.PLANET_SEARCH: 3}
 
 
 class Cargo:
+    upgrade_amount = 25
+    upgrade_multiplier = 0.15
+
     def __init__(self):
         self.cur_weight = 0
         self.max_weight = 25
         self.contents = {}
+        self.upgrade_cost = 30
 
     def get(self, resource: Resource) -> float:
         return self.contents.get(resource, 0)
@@ -59,6 +63,10 @@ class Cargo:
             return True
 
         return False
+
+    def upgrade(self):
+        self.upgrade_cost += self.upgrade_cost * self.upgrade_multiplier
+        self.max_weight += self.upgrade_amount
 
     def is_empty(self) -> bool:
         return not self.contents
@@ -97,9 +105,7 @@ class ShuttleHangar:
 
     def next_idle_shuttle(self) -> Shuttle:
         idle_shuttles = self.get_idle_shuttles()
-        if not idle_shuttles:
-            return
-        else:
+        if idle_shuttles:
             return idle_shuttles[0]
 
     def find_by_departure(self, departure_time: int) -> Shuttle:
@@ -107,14 +113,16 @@ class ShuttleHangar:
             if shuttle.departure_time == departure_time:
                 return shuttle
 
-        return None
-
 
 class PlanetContainer:
+    upgrade_amount = 5
+    upgrade_multiplier = 0.20
+
     def __init__(self):
         self.max_planets = 5
         self.planet_count = 0
         self.planets = []
+        self.upgrade_cost = 10
 
     def add_planet(self, planet: Planet):
         if self.planet_count + 1 > self.max_planets:
@@ -138,6 +146,10 @@ class PlanetContainer:
             if planet.resource == resource:
                 rate += 1
         return rate
+
+    def upgrade(self):
+        self.max_planets += self.upgrade_amount
+        self.upgrade_cost += self.upgrade_cost * self.upgrade_multiplier
 
     def get_pcount_str(self):
         return str(self.planet_count) + "/" + str(self.max_planets)
@@ -163,6 +175,7 @@ class Player:
     shop_icon = "🛍️"
     bulletpoint_icon = "⚫"
     resource_extraction_icon = "⛏"
+    upgrade_icon = "🌟"
 
     shuttle_price = 50
 
@@ -195,7 +208,7 @@ class Player:
             self.notify("You don't have enough money to buy a new shuttle!")
             return
 
-        self.money -= self.shuttle_price
+        self.pay_money(self.shuttle_price)
         shuttle = Shuttle()
         self.shuttle_hangar.shuttles.append(shuttle)
         self.notify("Bought a new shuttle: " + self.shuttle_icon + " " + shuttle.name + "\n\n" +
@@ -332,6 +345,13 @@ class Player:
         msg = self.money_icon + " You receive +" + utils.round_str(quantity) + " credits."
         self.notify(msg)
 
+    def pay_money(self, quantity: float):
+        if self.money - quantity < 0:
+            return
+        self.money -= quantity
+        self.notify("You paid " + self.money_icon + utils.round_str(quantity) + "\n" +
+                    "Current balance: " + self.money_icon + utils.round_str(self.money))
+
     def sell_resource(self, resource: Resource, quantity: int):
         if quantity < 1:
             return False
@@ -380,21 +400,21 @@ class Player:
 
         for resource, quantity in self.cargo.contents.items():
             msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
-                    ("/sell_" + resource.name + "_1 ", "/sell_" + resource.name + "_all")[quantity > 1] + " "
-                                                                                                          "(" + self.money_icon + str(resource.value.price) + " per kg)" + "\n"
+                    ("/sell_" + resource.name + "_1 ", "/sell_" + resource.name + "_all")[quantity > 1] + " " +
+                    "(" + self.money_icon + str(resource.value.price) + " per kg)" + "\n"
                     )
 
         if self.cargo.is_empty():
             msg += "Your cargo bay is completely empty!"
         else:
-            msg += "\n" + "/upgrade_cargo"
+            msg += "\n" + "/upgrade_cargo " + self.money_icon + utils.round_str(self.cargo.upgrade_cost)
 
         self.notify(msg)
 
     def view_shop(self):
         self.notify(self.shop_icon + " Shop\n" +
                     "Your credits: " + self.money_icon + " " + utils.round_str(self.money) + "\n\n" +
-                    self.shuttle_icon + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + self.money_icon + " credits    /buy_shuttle \n")
+                    self.shuttle_icon + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + self.money_icon + strings.tab + "/buy_shuttle \n")
 
     def view_planet_list(self):
         self.check_progress()
@@ -413,9 +433,16 @@ class Player:
                     self.resource_extraction_icon +
                     utils.round_str(self.planet_container.get_extraction_rate(resource) * self.extraction_rate) + " kg/min\n"
                     )
-        msg += "\n" + "/upgrade_celestial_database"
+        msg += "\n" + "/upgrade_celestial_database " + self.money_icon + utils.round_str(self.planet_container.upgrade_cost)
 
         self.notify(msg)
+
+    def upgrade(self, thing):
+        if self.money < thing.upgrade_cost:
+            self.notify("You don't have enough credits for this upgrade!")
+            return
+        self.pay_money(thing.upgrade_cost)
+        thing.upgrade()
 
     def notify(self, msg):
         globals.bot.send_message(self.id, msg)
