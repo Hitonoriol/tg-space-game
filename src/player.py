@@ -4,7 +4,7 @@ import enum
 import strings
 import globals
 from planet import *
-from resource import *
+from entity import *
 
 
 class Action(Enum):
@@ -20,59 +20,7 @@ class PendingAction:
         self.ready = False
 
 
-action_lengths = {Action.PLANET_SEARCH: 3}
-
-
-class Cargo:
-    upgrade_amount = 25
-    upgrade_multiplier = 0.15
-
-    def __init__(self):
-        self.cur_weight = 0
-        self.max_weight = 25
-        self.contents = {}
-        self.upgrade_cost = 30
-
-    def get(self, resource: Resource) -> float:
-        return self.contents.get(resource, 0)
-
-    def put(self, resource: Resource, quantity: float) -> float:
-        overflow: float = 0
-        self.cur_weight += quantity
-        if self.cur_weight > self.max_weight:
-            overflow = self.cur_weight - self.max_weight
-            self.cur_weight = self.max_weight
-
-        self.contents[resource] = self.get(resource) + (quantity - overflow)
-        return overflow
-
-    def remove(self, resource: Resource, quantity: float) -> bool:
-        if not self.contains(resource, quantity):
-            return False
-
-        self.cur_weight -= quantity
-        self.contents[resource] = self.get(resource) - quantity
-
-        if self.cur_weight < 0:
-            self.cur_weight = 0
-
-        return True
-
-    def contains(self, resource: Resource, quantity: float) -> bool:
-        if self.get(resource) >= quantity:
-            return True
-
-        return False
-
-    def upgrade(self):
-        self.upgrade_cost += self.upgrade_cost * self.upgrade_multiplier
-        self.max_weight += self.upgrade_amount
-
-    def is_empty(self) -> bool:
-        return not self.contents
-
-    def is_full(self) -> bool:
-        return self.cur_weight == self.max_weight
+action_lengths = {Action.PLANET_SEARCH: 5}
 
 
 class Shuttle:
@@ -115,8 +63,8 @@ class ShuttleHangar:
 
 
 class PlanetContainer:
-    upgrade_amount = 5
-    upgrade_multiplier = 0.20
+    upgrade_amount = 3
+    upgrade_multiplier = 0.25
 
     def __init__(self):
         self.max_planets = 5
@@ -158,33 +106,18 @@ class PlanetContainer:
         return self.planet_count == self.max_planets
 
 
-class Player:
+class Player(Entity):
     PROGRESS_NTF_MIN_TIME = 900
-
-    face_icon = "👦"
-    money_icon = "💵"
-    exp_icon = "✨"
-    planet_icon = "🪐"
-    planet_list_icon = "🌐"
-    box_icon = "📦"
-    resource_icon = "💎"
-    levelup_icon = "🎉"
-    time_icon = "🕛"
-    progress_icon = "⌛"
-    shuttle_icon = "🚀"
-    shop_icon = "🛍️"
-    bulletpoint_icon = "⚫"
-    resource_extraction_icon = "⛏"
-    upgrade_icon = "🌟"
 
     shuttle_price = 50
 
-    extraction_rate = 0.075
+    extraction_rate = 0.085
     exp_multiplier = 1.195
 
     send_shuttle_exp = 4
 
     def __init__(self, id=0, name=""):
+        super().__init__()
         self.name = name
         self.id = id
 
@@ -199,7 +132,6 @@ class Player:
 
         self.pending_actions = []
 
-        self.cargo = Cargo()
         self.planet_container = PlanetContainer()
         self.shuttle_hangar = ShuttleHangar()
 
@@ -211,15 +143,14 @@ class Player:
         self.pay_money(self.shuttle_price)
         shuttle = Shuttle()
         self.shuttle_hangar.shuttles.append(shuttle)
-        self.notify("Bought a new shuttle: " + self.shuttle_icon + " " + shuttle.name + "\n\n" +
-                    self.money_icon + " Credits left: " + str(self.money))
+        self.notify("Bought a new shuttle: " + icons.shuttle + " " + shuttle.name)
 
     def level_up(self):
         self.exp = 0
         self.required_exp += int(self.required_exp * self.exp_multiplier)
         self.lvl += 1
 
-        msg = self.levelup_icon + " Level Up! You are now a level " + str(self.lvl) + " captain."
+        msg = icons.levelup + " Level Up! You are now a level " + str(self.lvl) + " captain."
         self.notify(msg)
 
     def add_exp(self, amt: int):
@@ -228,7 +159,7 @@ class Player:
 
         self.exp += amt
 
-        msg = self.exp_icon + " You get +" + str(amt) + " experience!"
+        msg = icons.exp + " You get +" + str(amt) + " experience!"
         self.notify(msg)
 
         if self.exp >= self.required_exp:
@@ -259,8 +190,8 @@ class Player:
 
         shuttle.depart(self.pending_actions[-1].start_time)
 
-        self.notify("You send your " + self.shuttle_icon + " " + shuttle.name + " shuttle to search for a new planet...\n\n" +
-                    self.time_icon + " It will return in " + utils.time_str(action_lengths[Action.PLANET_SEARCH]) + ".")
+        self.notify("You send your " + icons.shuttle + " " + shuttle.name + " shuttle to search for a new planet...\n\n" +
+                    icons.time + " It will return in " + utils.time_str(action_lengths[Action.PLANET_SEARCH]) + ".")
         return True
 
     def start_action(self, action: Action):
@@ -290,7 +221,7 @@ class Player:
         minutes_passed = time_passed / 60
         self.last_check = now
         depleted_msg = ""
-        msg = (self.progress_icon + " Progress\n" +
+        msg = (icons.progress + " Progress\n" +
                "[" + utils.time_str(time_passed) + " since last check]\n\n")
 
         resources_extracted = {}
@@ -318,7 +249,7 @@ class Player:
 
             if planet.resource_amount == 0:
                 self.planet_container.remove_planet(planet)
-                depleted_msg += self.planet_icon + " " + planet.name + " is out of " + planet.resource.name + "!\n"
+                depleted_msg += icons.planet + " " + planet.name + " is out of " + planet.resource.name + "!\n"
 
         if resources_extracted:
             msg += "Your drills have extracted:\n"
@@ -328,7 +259,7 @@ class Player:
             msg += "You don't have any planets in your celestial body database."
 
         for resource, amount in resources_extracted.items():
-            msg += (self.bulletpoint_icon + " " + str(round(amount, 2)) + " kg of " + resource.name + "" +
+            msg += (icons.bulletpoint + " " + str(round(amount, 2)) + " kg of " + resource.name + "" +
                     " (" + str(round(resources_remain[resource], 2)) + " kg left)" + "\n")
 
         if time_passed >= self.PROGRESS_NTF_MIN_TIME or verbose:
@@ -342,15 +273,15 @@ class Player:
             return
 
         self.money += quantity
-        msg = self.money_icon + " You receive +" + utils.round_str(quantity) + " credits."
+        msg = icons.money + " You receive +" + utils.round_str(quantity) + " credits."
         self.notify(msg)
 
     def pay_money(self, quantity: float):
         if self.money - quantity < 0:
             return
         self.money -= quantity
-        self.notify("You paid " + self.money_icon + utils.round_str(quantity) + "\n" +
-                    "Current balance: " + self.money_icon + utils.round_str(self.money))
+        self.notify("You paid " + icons.money + utils.round_str(quantity) + "\n" +
+                    "Current balance: " + icons.money + utils.round_str(self.money))
 
     def sell_resource(self, resource: Resource, quantity: int):
         if quantity < 1:
@@ -374,51 +305,52 @@ class Player:
         planet.set_resource_amount(random.uniform(base_resources * 0.15, base_resources))
         self.planet_container.add_planet(planet)
 
-        msg = ("You found a new planet!\n\n" +
-               self.planet_icon + " Name: " + planet.name + "\n" +
-               self.resource_icon + " Resource type: " + planet.resource.name + "\n" +
-               self.box_icon + " Resource amount: " + str(round(planet.resource_amount, 2)) + " kg\n")
-
-        self.notify(msg)
+        self.notify("You found a new planet!\n\n" +
+                    icons.planet + " Name: " + planet.name + "\n" +
+                    icons.resource + " Resource type: " + planet.resource.name + "\n" +
+                    icons.box + " Resource amount: " + str(round(planet.resource_amount, 2)) + " kg\n"
+        )
         self.add_exp(int(planet.resource_amount * 0.2))
 
     def show_profile(self):
         self.check_progress()
-        msg = (" Captain " + self.face_icon + " " + self.name + "\n\n" +
-               self.exp_icon + " Level " + str(self.lvl) + " [" + str(self.exp) + "/" + str(self.required_exp) + "] " +
-               "(" + str(round((self.exp / self.required_exp) * 100)) + "%)\n" +
-               self.money_icon + " Credits: " + utils.round_str(self.money) + "\n" +
-               self.planet_icon + " Planets found: " + str(self.planet_container.planet_count) + strings.tab + "/celestial_database\n" +
-               self.shuttle_icon + " Shuttles: " + str(len(self.shuttle_hangar.shuttles))
-               )
-        self.notify(msg)
+        self.notify(" Captain " + icons.face + " " + self.name + "\n" +
+                    icons.exp + " Level " + str(self.lvl) + " [" + str(self.exp) + "/" + str(self.required_exp) + "] " +
+                    "(" + str(round((self.exp / self.required_exp) * 100)) + "%)\n" +
+                    icons.money + " Credits: " + utils.round_str(self.money) + "\n\n" +
+                    "Stats:\n" +
+                    self.get_stat_str() + "\n" +
+                    "Ship:\n" +
+                    self.cargo.get_cargo_header_str() + strings.tab + "/show_cargo\n" +
+                    icons.planet + " Planets found: " + str(self.planet_container.planet_count) + strings.tab + "/celestial_database\n" +
+                    icons.shuttle + " Shuttles: " + str(len(self.shuttle_hangar.shuttles))
+        )
 
     def show_cargo(self):
         self.check_progress()
-        msg = (self.box_icon + " Cargo bay " +
-               "[" + utils.round_str(self.cargo.cur_weight) + "/" + utils.round_str(self.cargo.max_weight) + " kg]\n\n")
+        msg = self.cargo.get_cargo_header_str() + "\n\n"
 
         for resource, quantity in self.cargo.contents.items():
-            msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
+            msg += (icons.bulletpoint + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
                     ("/sell_" + resource.name + "_1 ", "/sell_" + resource.name + "_all")[quantity > 1] + " " +
-                    "(" + self.money_icon + str(resource.value.price) + " per kg)" + "\n"
+                    "(" + icons.money + str(resource.value.price) + " per kg)" + "\n"
                     )
 
         if self.cargo.is_empty():
             msg += "Your cargo bay is completely empty!"
         else:
-            msg += "\n" + "/upgrade_cargo " + self.money_icon + utils.round_str(self.cargo.upgrade_cost)
+            msg += "\n" + "/upgrade_cargo " + icons.money + utils.round_str(self.cargo.upgrade_cost)
 
         self.notify(msg)
 
     def view_shop(self):
-        self.notify(self.shop_icon + " Shop\n" +
-                    "Your credits: " + self.money_icon + " " + utils.round_str(self.money) + "\n\n" +
-                    self.shuttle_icon + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + self.money_icon + strings.tab + "/buy_shuttle \n")
+        self.notify(icons.shop + " Shop\n" +
+                    "Your credits: " + icons.money + " " + utils.round_str(self.money) + "\n\n" +
+                    icons.shuttle + " Buy 1 shuttle for " + str(self.shuttle_price) + " " + icons.money + strings.tab + "/buy_shuttle \n")
 
     def view_planet_list(self):
         self.check_progress()
-        msg = (self.planet_list_icon + " Celestial Body Database " +
+        msg = (icons.planet_list + " Celestial Body Database " +
                "[" + self.planet_container.get_pcount_str() + "]\n\n"
                )
 
@@ -429,11 +361,11 @@ class Player:
 
         resources = self.planet_container.get_resource_reserves()
         for resource, quantity in resources.items():
-            msg += (self.bulletpoint_icon + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
-                    self.resource_extraction_icon +
+            msg += (icons.bulletpoint + " " + resource.name + ": " + utils.round_str(quantity) + " kg" + strings.tab +
+                    icons.resource_extraction +
                     utils.round_str(self.planet_container.get_extraction_rate(resource) * self.extraction_rate) + " kg/min\n"
                     )
-        msg += "\n" + "/upgrade_celestial_database " + self.money_icon + utils.round_str(self.planet_container.upgrade_cost)
+        msg += "\n" + "/upgrade_celestial_database " + icons.money + utils.round_str(self.planet_container.upgrade_cost)
 
         self.notify(msg)
 
