@@ -3,15 +3,24 @@ import icons
 from resource import *
 
 
-class Cargo:
-    upgrade_amount = 25
-    upgrade_multiplier = 0.20
+class Upgradeable:
+    def __init__(self, upgrade_by=1, upgrade_multiplier=0.5, initial_cost=1):
+        self.upgrade_lvl = 1
+        self.upgrade_amount = upgrade_by
+        self.upgrade_multiplier = upgrade_multiplier
+        self.upgrade_cost = initial_cost
 
+    def upgrade(self):
+        self.upgrade_lvl += 1
+        self.upgrade_cost += self.upgrade_cost * self.upgrade_multiplier
+
+
+class Cargo(Upgradeable):
     def __init__(self):
+        super().__init__(upgrade_by=25, upgrade_multiplier=0.20, initial_cost=15)
         self.cur_weight = 0
         self.max_weight = 25
         self.contents = {}
-        self.upgrade_cost = 15
 
     def get(self, resource: Resource) -> float:
         return self.contents.get(resource, 0)
@@ -45,7 +54,7 @@ class Cargo:
         return False
 
     def upgrade(self):
-        self.upgrade_cost += self.upgrade_cost * self.upgrade_multiplier
+        super().upgrade()
         self.max_weight += self.upgrade_amount
 
     def is_empty(self) -> bool:

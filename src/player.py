@@ -62,15 +62,12 @@ class ShuttleHangar:
                 return shuttle
 
 
-class PlanetContainer:
-    upgrade_amount = 3
-    upgrade_multiplier = 0.25
-
+class PlanetContainer(Upgradeable):
     def __init__(self):
+        super().__init__(upgrade_by=3, upgrade_multiplier=0.25, initial_cost=10)
         self.max_planets = 5
         self.planet_count = 0
         self.planets = []
-        self.upgrade_cost = 10
 
     def add_planet(self, planet: Planet):
         if self.planet_count + 1 > self.max_planets:
@@ -369,7 +366,7 @@ class Player(Entity):
 
         self.notify(msg)
 
-    def upgrade(self, thing):
+    def upgrade(self, thing: Upgradeable):
         if self.money < thing.upgrade_cost:
             self.notify("You don't have enough credits for this upgrade!")
             return
